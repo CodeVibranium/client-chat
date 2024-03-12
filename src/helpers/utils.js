@@ -12,7 +12,7 @@ export function addMessage({
   // Create a new paragraph element
   if (first) {
     newElem = document.createElement("h3");
-    newElem.textContent = `You are connected to ${socketId}`;
+    newElem.textContent = `You are connected to ${socketId} as ${message}`;
   } else {
     newElem = document.createElement("li");
     newElem.id = "chat-messages";

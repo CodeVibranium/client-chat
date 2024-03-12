@@ -1,135 +1,124 @@
 import React, { useRef, useState } from "react";
-import { io } from "socket.io-client";
 import { addMessage } from "../helpers/utils";
 import * as superheroes from "superheroes";
 import { wss } from "../conifg/socket.config";
 
-function sendMessage(socket, message, room = "") {
-  socket.emit("send-message", { ...message }, room);
-}
+// function sendMessage(socket, message, room = "") {
+//   socket.emit("send-message", { ...message }, room);
+// }
 
 function Socket() {
-  const [isSocketConnected, setSocketConnected] = useState(false);
+  const userName = useRef(superheroes.random());
   const [loading, setLoading] = useState(false);
+  const [chatConnected, setChatConnected] = useState({
+    connected: true,
+    disconnectedBy: null,
+  });
+  const [socketData, setSocketData] = useState({
+    brand: "Samsung",
+    sentBy: userName.current,
+    userName: userName.current,
+  });
+  const [isSocketConnected, setSocketConnected] = useState(false);
 
-  // const socket = io("http://localhost:3001");
-  // console.log("socket", socket);
-  const userName = useRef(null);
-
-  // socket.on("connect", () => {
-  //   console.log("SOCKET", socket);
-  //   console.log("Socket connected successfully ", socket?.id);
-  //   addMessage({ message: `You have connected to ${socket?.id}`, first: true });
-  //   userName.current = superheroes.random();
-  //   console.log("userName", userName);
-  //   // socket.emit("send-message", { message: `HELLO ${socket.id}` });
-  // });
-
-  // socket.on("receive-msg", (msgSentFromServer) => {
-  //   console.log(msgSentFromServer);
-  //   addMessage({
-  //     message: msgSentFromServer.message,
-  //     sentBy: msgSentFromServer.sentBy,
-  //   });
-  // });
+  const emitter = wss.getEmitter();
+  emitter.on("connectionChanged", (connection) => {
+    if (connection) {
+      wss.receiveMsg((data) => {
+        setSocketData(data);
+      });
+      wss.closeSocket((data) => {
+        setChatConnected({ connected: false, disconnectedBy: data.agentName });
+      });
+    }
+  });
 
   async function handleSendMessage() {
     const input = document.getElementById("message");
     if (!isSocketConnected) {
-      userName.current = superheroes.random();
-      console.log("wss--->", wss);
-      // wss.connectSocket()
       wss
         .createSocket("http://localhost:3001")
-        .connectSocket(
-          {
-            brand: "Samsung",
-            sentBy: userName.current,
-            userName: userName.current,
-            message: input.value,
-            first: true,
-          },
-          () => setSocketConnected(true)
+        .connectSocket({ ...socketData, message: input.value }, () =>
+          setSocketConnected(true)
         )
         .then((res) => {
-          res.registerUser(
-            {
-              brand: "Samsung",
-              sentBy: userName.current,
-              userName: userName.current,
-              message: input.value,
-              first: true,
-            },
-            () => {
-              console.log("FE: USER REGISTERED SUCCESSFULLY");
-              setLoading(true);
-            }
-          );
+          res.registerUser({ ...socketData, message: input.value }, (data) => {
+            setLoading(true);
+            // it has user socketId
+            setSocketData(data);
+          });
         });
+      // user will send a message & wait and he will receive a message first from agent to get
+      // agent socket id, very important
     } else {
-      const messageElem = document.getElementById("chat-messages");
-      const message = JSON.parse(messageElem.data);
-      console.log("message FROM AGENT SENDING TO AGENT", message);
+      // const messageElem = document.getElementById("chat-messages");
+      // const message = JSON.parse(messageElem.data);
+      const inputVal = input.value;
+      input.value = "";
       wss.sendMsg(
         {
-          ...message,
-          message: input.value,
+          ...socketData,
+          message: inputVal,
         },
-        message.agentSocketId
+        socketData.agentSocketId
       );
     }
   }
-
+  function handleEndConnection() {
+    wss.disconnectSocket(socketData);
+    setChatConnected({ connected: false, disconnectedBy: socketData.userName });
+  }
   return (
     <>
       <div style={{ maxHeight: "50vh", overflow: "auto" }}>
         <ol id="socket-msgs"></ol>
       </div>
-      <div
-        style={{
-          position: "absolute",
-          bottom: "20px",
-          minWidth: "100%",
-        }}
-      >
-        <input
-          id="message"
-          type="text"
-          placeholder="Send a message"
-          style={{ minWidth: "80%", padding: "10px" }}
-        />
-        <button
-          style={{ minHeight: "100%", padding: "10px", marginLeft: "10px" }}
-          onClick={handleSendMessage}
-        >
-          Submit
-        </button>
-        <br />
-        <br />
-        {/* <input
-          id="room"
-          type="text"
-          placeholder="Room id"
-          style={{ minWidth: "80%", padding: "10px" }}
-        />
-        <button
-          style={{ minHeight: "100%", padding: "10px", marginLeft: "10px" }}
-          onClick={() => {
-            const input = document.getElementById("message");
-            const room = document.getElementById("room");
-            sendMessage(
-              socket,
-              {
-                sentBy: userName.current,
-                message: input.value,
-              },
-              room.value
-            );
+      {chatConnected.connected ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "20px",
+            minWidth: "100%",
           }}
         >
-          Submit
-        </button> */}
-      </div>
+          <input
+            id="message"
+            type="text"
+            placeholder="Send a message"
+            style={{ minWidth: "80%", padding: "10px" }}
+          />
+          <button
+            style={{
+              minHeight: "100%",
+              padding: "10px",
+              marginLeft: "10px",
+              background: "#0066b2",
+            }}
+            onClick={handleSendMessage}
+          >
+            Submit
+          </button>
+          {isSocketConnected && (
+            <button
+              style={{
+                minHeight: "100%",
+                padding: "10px",
+                marginLeft: "30px",
+                background: "#BA0021",
+              }}
+              onClick={handleEndConnection}
+            >
+              End
+            </button>
+          )}
+          <br />
+          <br />
+        </div>
+      ) : (
+        <>
+          <h3>{socketData.userName} has disconnected</h3>
+        </>
+      )}
     </>
   );
 }
